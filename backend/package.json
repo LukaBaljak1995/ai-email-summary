@@ -1,0 +1,27 @@
+{
+  "name": "ai-email-summary-backend",
+  "private": true,
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20.11.1"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "dev": "tsx watch index.ts",
+    "gcp-build": "npm run build",
+    "start": "functions-framework --target=api --source=dist/index.js --signature-type=http"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.4.6",
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.15.21",
+    "tsx": "^4.19.4",
+    "typescript": "^5.6.3"
+  }
+}
