@@ -1,23 +1,58 @@
-# Deployment Guide
+# Local Setup Guide
+
+This project is now configured for local/private use only. Keep real secrets in local env files and do not commit them.
 
 ## Prerequisites
 
-- Install Node.js 20 locally for both `frontend` and `backend`.
-- Install the Google Cloud CLI: `gcloud`.
-- Authenticate: `gcloud auth login`
-- Set your project: `gcloud config set project YOUR_GCP_PROJECT_ID`
-- Enable required services:
+- Node.js 20.11.1
+- A Supabase project
+- Gmail OAuth credentials with a refresh token
+- An OpenAI API key
+
+## Env Files
+
+The repo already ignores `.env` and `.env.local`, so those secrets stay out of git.
+
+Backend:
 
 ```bash
-gcloud services enable cloudfunctions.googleapis.com \
-  cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com \
-  run.googleapis.com
+cd backend
+cp .env.example .env
 ```
+
+Make sure the terminal you use for `npm install` and `npm run dev` is on Node `20.11.1` or newer.
+
+Frontend:
+
+```bash
+cd frontend
+cp .env.local.example .env.local
+```
+
+Set these values in `backend/.env`:
+
+```env
+OPENAI_API_KEY=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REFRESH_TOKEN=...
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+Set the frontend env too in `frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_API_BASE=http://localhost:8080
+```
+
+## Supabase Table
+
+Run the SQL in `supabase/schema.sql` in the Supabase SQL editor. That creates the `daily_summaries` table used by the backend.
 
 ## Local Development
 
-### Backend
+Backend:
 
 ```bash
 cd backend
@@ -27,73 +62,18 @@ npm run dev
 
 This starts the API on `http://localhost:8080`.
 
-### Frontend
-
-Set the frontend API base to your local backend:
+Frontend:
 
 ```bash
 cd frontend
-cp .env.local.example .env.local
-```
-
-Then set:
-
-```env
-NEXT_PUBLIC_API_BASE=http://localhost:8080
-```
-
-Start the app:
-
-```bash
 npm install
 npm run dev
 ```
 
-## Deploy Backend To Google Cloud Functions
-
-This backend is set up for a 2nd gen HTTP function with the exported entry point `api`.
-
-Deploy it from the repo root:
-
-```bash
-gcloud functions deploy ai-email-summary-api \
-  --gen2 \
-  --runtime=nodejs20 \
-  --region=europe-west1 \
-  --source=backend \
-  --entry-point=api \
-  --trigger-http \
-  --allow-unauthenticated
-```
-
-After deploy, note the HTTPS URL returned by GCP. You will use that as `NEXT_PUBLIC_API_BASE` for the frontend.
-
-## Deploy Frontend To Google Cloud Run
-
-This frontend is configured for container deployment with Next.js standalone output.
-
-Deploy from the repo root:
-
-```bash
-gcloud run deploy ai-email-summary-frontend \
-  --source=frontend \
-  --region=europe-west1 \
-  --allow-unauthenticated \
-  --set-env-vars=NEXT_PUBLIC_API_BASE=YOUR_BACKEND_FUNCTION_URL
-```
-
-Replace `YOUR_BACKEND_FUNCTION_URL` with the backend function URL from the previous step.
-
-Cloud Run will build the container from `frontend/Dockerfile` and expose the frontend publicly.
-
-## Recommended Deployment Order
-
-1. Deploy backend first.
-2. Copy the backend URL.
-3. Deploy frontend with `NEXT_PUBLIC_API_BASE` set to that backend URL.
+This starts the UI on `http://localhost:3000`.
 
 ## Notes
 
-- The backend currently uses in-memory sample data. Any “mark as read” changes reset on cold start or redeploy.
-- If you later connect the backend to a real database, you can keep the same deployment model.
-- If your frontend needs stricter CORS, tighten the backend `cors()` configuration in `backend/index.ts`.
+- The backend now writes summaries to Supabase instead of Firestore.
+- Keep `SUPABASE_SERVICE_ROLE_KEY` only in `backend/.env`.
+- `NEXT_PUBLIC_API_BASE` is safe for a local URL, but anything prefixed with `NEXT_PUBLIC_` should never contain secrets.

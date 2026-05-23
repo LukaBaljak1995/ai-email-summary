@@ -1,23 +1,36 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { google } from "googleapis";
-import { Firestore } from "@google-cloud/firestore";
+import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const firestore = new Firestore();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function requireEnv(name: string) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+
+  return value;
+}
+
+const openai = new OpenAI({ apiKey: requireEnv("OPENAI_API_KEY") });
+const supabase = createClient(
+  requireEnv("SUPABASE_URL"),
+  requireEnv("SUPABASE_SERVICE_ROLE_KEY")
+);
 
 const oauth2 = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET
+  requireEnv("GOOGLE_CLIENT_ID"),
+  requireEnv("GOOGLE_CLIENT_SECRET")
 );
 
 oauth2.setCredentials({
-  refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+  refresh_token: requireEnv("GOOGLE_REFRESH_TOKEN")
 });
 
 const gmail = google.gmail({ version: "v1", auth: oauth2 });
@@ -31,6 +44,16 @@ type ActionItem = {
   deal?: string;
   expiresAt?: string;
   reason: string;
+};
+
+type SummaryRow = {
+  date: string;
+  status: "read" | "unread";
+  generated_at: string;
+  processed_email_count: number;
+  items: ActionItem[];
+  full_summary: string;
+  read_at?: string | null;
 };
 
 function todayId() {
@@ -66,6 +89,19 @@ function extractBody(payload: any): string {
 
 function header(headers: any[], name: string) {
   return headers?.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value || "";
+}
+
+function toSummaryResponse(row: SummaryRow) {
+  return {
+    id: row.date,
+    date: row.date,
+    status: row.status,
+    generatedAt: row.generated_at,
+    processedEmailCount: row.processed_email_count,
+    items: row.items,
+    fullSummary: row.full_summary,
+    readAt: row.read_at ?? undefined
+  };
 }
 
 async function analyzeEmail(email: {
@@ -180,44 +216,66 @@ app.post("/run-daily", async (_req, res) => {
           .map(i => `- [${i.recommendation}] ${i.category}: ${i.subject} — ${i.reason}`)
           .join("\n");
 
-  await firestore.collection("daily_summaries").doc(date).set({
+  const { error } = await supabase.from("daily_summaries").upsert({
     date,
     status: "unread",
-    generatedAt: new Date().toISOString(),
-    processedEmailCount: messages.length,
+    generated_at: new Date().toISOString(),
+    processed_email_count: messages.length,
     items,
-    fullSummary
+    full_summary: fullSummary
   });
+
+  if (error) {
+    throw error;
+  }
 
   res.json({ ok: true, date, processedEmailCount: messages.length, actionItemCount: items.length });
 });
 
 app.get("/summaries", async (_req, res) => {
-  const snap = await firestore
-    .collection("daily_summaries")
-    .orderBy("date", "desc")
-    .limit(60)
-    .get();
+  const { data, error } = await supabase
+    .from("daily_summaries")
+    .select("date,status,generated_at,processed_email_count,items,full_summary,read_at")
+    .order("date", { ascending: false })
+    .limit(60);
 
-  res.json(
-    snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }))
-  );
+  if (error) {
+    throw error;
+  }
+
+  res.json((data ?? []).map(toSummaryResponse));
 });
 
 app.get("/summaries/:date", async (req, res) => {
-  const doc = await firestore.collection("daily_summaries").doc(req.params.date).get();
-  if (!doc.exists) return res.status(404).json({ error: "Not found" });
-  res.json({ id: doc.id, ...doc.data() });
+  const { data, error } = await supabase
+    .from("daily_summaries")
+    .select("date,status,generated_at,processed_email_count,items,full_summary,read_at")
+    .eq("date", req.params.date)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  res.json(toSummaryResponse(data));
 });
 
 app.post("/summaries/:date/read", async (req, res) => {
-  await firestore.collection("daily_summaries").doc(req.params.date).update({
-    status: "read",
-    readAt: new Date().toISOString()
-  });
+  const { error } = await supabase
+    .from("daily_summaries")
+    .update({
+      status: "read",
+      read_at: new Date().toISOString()
+    })
+    .eq("date", req.params.date);
+
+  if (error) {
+    throw error;
+  }
   res.json({ ok: true });
 });
 

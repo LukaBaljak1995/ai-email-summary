@@ -8,20 +8,23 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
-    "dev": "tsx watch index.ts",
-    "gcp-build": "npm run build",
-    "start": "functions-framework --target=api --source=dist/index.js --signature-type=http"
+    "dev": "ts-node-dev --respawn --transpile-only index.ts",
+    "start": "node dist/index.js"
   },
   "dependencies": {
-    "@google-cloud/functions-framework": "^3.4.6",
+    "@supabase/supabase-js": "^2.49.8",
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "googleapis": "^150.0.1",
+    "openai": "^4.104.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/node": "^22.15.21",
-    "tsx": "^4.19.4",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
     "typescript": "^5.6.3"
   }
 }
